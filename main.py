@@ -1,6 +1,6 @@
 import argparse
 from disassembler import Disassembler
-#from pipeline_simulator import PipelineSimulator
+from pipeline_simulator import PipelineSimulator
 
 def main():
     # Command line args
@@ -32,8 +32,8 @@ def main():
         disassembler.disassemble()
 
         # Create and run the Pipeline Simulator
-        #pipeline_sim = PipelineSimulator(disassembler.result, trace_start, trace_end)
-        #pipeline_sim.simulate()
+        pipeline_sim = PipelineSimulator(disassembler.result, trace_start, trace_end)
+        pipeline_sim.simulate()
 
     else:
         print("Invalid operation.")

@@ -32,6 +32,25 @@ class PipelineSimulator:
         self.branch_stalls = 0            # Branch stalls
         self.other_stalls = 0             # Other stalls
         
+        # Forwarding counts and detection
+        self.forwarding_counts = {
+            "EX/DF -> RF/EX": 0,
+            "DF/DS -> EX/DF": 0,
+            "DF/DS -> RF/EX": 0,
+            "DS/WB -> EX/DF": 0,
+            "DS/WB -> RF/EX": 0
+        }
+        self.forwarding_detected = []  # List to keep track of forwarding detections for each cycle
+        
+        # Pipeline registers setup
+        self.pipeline_registers = {
+            "IF/IS": {"NPC": 0},
+            "IS/ID": {"IR": 0},
+            "RF/EX": {"A": 0, "B": 0},
+            "EX/DF": {"ALUout": 0, "B": 0},
+            "DS/WB": {"ALUout_LMD": 0}
+        }
+        
         # Flag to indicate the pipeline's completion state
         self.is_pipeline_complete = False
 
@@ -69,8 +88,7 @@ class PipelineSimulator:
         if (self.trace_start is None and self.trace_end is None) or \
            (self.trace_start <= self.clock_cycle <= self.trace_end):
             print(f"***** Cycle #{self.clock_cycle}***********************************************")
-            print(f"Current PC = {self.pc}:
-")
+            print(f"Current PC = {self.pc}:")
 
             # Pipeline Status
             print("Pipeline Status:")
@@ -83,29 +101,20 @@ class PipelineSimulator:
             print(f"Stall Instruction: {stall_instr}\n")
 
             # Forwarding Information
+            detected_forwarding = ", ".join(self.forwarding_detected) if self.forwarding_detected else "(none)"
             print("Forwarding:")
-            print(" Detected: (none)")
+            print(f" Detected: {detected_forwarding}")
             print(" Forwarded:")
-            forwarding_lines = [
-                "* EX/DF -> RF/EX : (none)",
-                "* DF/DS -> EX/DF : (none)",
-                "* DF/DS -> RF/EX : (none)",
-                "* DS/WB -> EX/DF : (none)",
-                "* DS/WB -> RF/EX : (none)"
-            ]
-            for line in forwarding_lines:
-                print(f" {line}")
+            for path, count in self.forwarding_counts.items():
+                print(f" * {path} : {count}")
             print()
 
             # Pipeline Registers
             print("Pipeline Registers:")
-            print(f"* IF/IS.NPC\t: {self.pc + 4}")
-            print(f"* IS/ID.IR\t: 0")
-            print(f"* RF/EX.A\t: 0")
-            print(f"* RF/EX.B\t: 0")
-            print(f"* EX/DF.ALUout\t: 0")
-            print(f"* EX/DF.B\t: 0")
-            print(f"* DS/WB.ALUout-LMD\t : 0\n")
+            for reg, values in self.pipeline_registers.items():
+                for key, value in values.items():
+                    print(f"* {reg}.{key}\t: {value}")
+            print()
 
             # Integer Registers
             print("Integer registers:")
@@ -127,15 +136,8 @@ class PipelineSimulator:
 
             # Total Forwardings
             print("Total Forwardings:")
-            forwarding_counts = [
-                f"* EX/DF -> RF/EX : {self.total_forwardings}",
-                f"* DF/DS -> EX/DF : 0",
-                f"* DF/DS -> RF/EX : 0",
-                f"* DS/WB -> EX/DF : 0",
-                f"* DS/WB -> RF/EX : 0"
-            ]
-            for line in forwarding_counts:
-                print(f" {line}")
+            for path, count in self.forwarding_counts.items():
+                print(f" * {path} : {count}")
             print()
 
     def print_final_summary(self):
