@@ -45,7 +45,7 @@ class PipelineSimulator:
         # Pipeline registers setup
         self.pipeline_registers = {
             "IF/IS": {"NPC": 0},
-            "IS/ID": {"IR": 0},
+            "IS/ID": {"IR": "NOP"},
             "RF/EX": {"A": 0, "B": 0},
             "EX/DF": {"ALUout": 0, "B": 0},
             "DS/WB": {"ALUout_LMD": 0}
@@ -68,10 +68,95 @@ class PipelineSimulator:
         # Print final state and statistics
         self.print_final_summary()
 
+    def parse_instruction(self, instruction):
+        # Parse the given instruction string and return a dictionary of components
+        # Instructions are formatted as: assembly representation followed by address
+        parts = instruction.split('\t')
+        asm_str = parts[2]  # Assembly representation
+        address = int(parts[1])  # Address as integer
+        
+        # Split asm_str into operation and operands
+        asm_parts = asm_str.split()
+        operation = asm_parts[0]  # Operation name (e.g., ADDI, SW, LW)
+        operands = asm_parts[1:]  # Operands (e.g., x8, x0, 44)
+
+        # Construct parsed instruction dictionary
+        parsed_instr = {
+            "operation": operation,
+            "operands": operands,
+            "address": address
+        }
+        return parsed_instr
+
     def advance_pipeline(self):
-        # Method to move instructions through the pipeline stages
-        # Placeholder for future implementation
-        pass
+        # WB Stage - Write Back to registers
+        if self.pipeline["WB"] != "NOP":
+            instruction = self.pipeline["WB"]
+            if instruction["operation"] in ["LW", "ADD", "SUB", "ADDI"]:
+                dest_reg = instruction["operands"][0]
+                result = self.pipeline_registers["DS/WB"]["ALUout_LMD"]
+                self.registers[dest_reg] = result
+
+        # DS Stage - Complete data memory access
+        if self.pipeline["DS"] != "NOP":
+            instruction = self.pipeline["DS"]
+            if instruction["operation"] == "LW":
+                address = self.pipeline_registers["EX/DF"]["ALUout"]
+                self.pipeline_registers["DS/WB"]["ALUout_LMD"] = self.memory[address]
+            elif instruction["operation"] == "SW":
+                address = self.pipeline_registers["EX/DF"]["ALUout"]
+                value = self.pipeline_registers["EX/DF"]["B"]
+                self.memory[address] = value
+
+        # EX Stage - Execute ALU operations
+        if self.pipeline["EX"] != "NOP":
+            instruction = self.pipeline["EX"]
+            if instruction["operation"] in ["ADD", "SUB", "ADDI"]:
+                src1 = instruction["operands"][1]
+                src2 = instruction["operands"][2] if len(instruction["operands"]) > 2 else None
+                if instruction["operation"] == "ADD":
+                    result = self.registers[src1] + self.registers[src2]
+                elif instruction["operation"] == "SUB":
+                    result = self.registers[src1] - self.registers[src2]
+                elif instruction["operation"] == "ADDI":
+                    result = self.registers[src1] + int(src2)
+                self.pipeline_registers["EX/DF"]["ALUout"] = result
+
+        # RF Stage - Fetch registers for next operations
+        if self.pipeline["RF"] != "NOP":
+            instruction = self.pipeline["RF"]
+            if instruction["operation"] in ["ADD", "SUB", "SW", "LW", "ADDI"]:
+                src1 = instruction["operands"][1]
+                self.pipeline_registers["RF/EX"]["A"] = self.registers[src1]
+                if len(instruction["operands"]) > 2:
+                    src2 = instruction["operands"][2]
+                    self.pipeline_registers["RF/EX"]["B"] = self.registers[src2]
+
+        # ID Stage - Decode Instruction
+        # For simplicity, assume ID just passes the instruction to RF, hazard detection will be implemented here.
+
+        # IS Stage - Continue instruction fetch from IF stage
+
+        # IF Stage - Fetch next instruction
+        if self.pc < 496 + len(self.instructions) * 4:
+            next_instruction_index = (self.pc - 496) // 4
+            self.pipeline["IF"] = self.parse_instruction(self.instructions[next_instruction_index])
+            self.pc += 4
+        else:
+            self.pipeline["IF"] = {"operation": "NOP"}  # No more instructions to fetch
+
+        # Advance pipeline by shifting all stages (from WB to IF)
+        self.pipeline["WB"] = self.pipeline["DS"]
+        self.pipeline["DS"] = self.pipeline["DF"]
+        self.pipeline["DF"] = self.pipeline["EX"]
+        self.pipeline["EX"] = self.pipeline["RF"]
+        self.pipeline["RF"] = self.pipeline["ID"]
+        self.pipeline["ID"] = self.pipeline["IS"]
+        self.pipeline["IS"] = self.pipeline["IF"]
+
+        # Check if the pipeline is complete (all stages are NOP)
+        if all(stage == {"operation": "NOP"} for stage in self.pipeline.values()):
+            self.is_pipeline_complete = True
 
     def detect_hazards(self):
         # Method to detect hazards and insert stalls as needed
@@ -93,7 +178,7 @@ class PipelineSimulator:
             # Pipeline Status
             print("Pipeline Status:")
             for stage, instr in self.pipeline.items():
-                print(f"* {stage} : {instr}")
+                print(f"* {stage} : {instr['operation'] if isinstance(instr, dict) else instr}")
             print()
 
             # Stall Instruction
@@ -157,5 +242,5 @@ class PipelineSimulator:
 
         # Print memory contents
         print("\nMemory:")
-        for addr, value in sorted(self.memory.items()):
-            print(f"  Address {addr}: {value}")
+        for addr in range(600, 640, 4):
+            print(f"  {addr}: {self.memory[addr]}")
