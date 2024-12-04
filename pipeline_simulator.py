@@ -22,7 +22,7 @@ class PipelineSimulator:
         self.trace_end = trace_end        # End of tracing cycle
 
         # Register and Memory Setup
-        self.registers = {f"x{i}": 0 for i in range(32)}  # 32 general-purpose registers as a dictionary
+        self.registers = {f"R{i}": 0 for i in range(32)}  # 32 general-purpose registers as a dictionary
         self.memory = {i: 0 for i in range(600, 640, 4)}    # Dictionary to represent memory space from address 600 to 636
 
         # Metrics for logging simulation performance
@@ -74,18 +74,19 @@ class PipelineSimulator:
         parts = instruction.split('\t')
         asm_str = parts[2]  # Assembly representation
         address = int(parts[1])  # Address as integer
-        
         # Split asm_str into operation and operands
         asm_parts = asm_str.split()
         operation = asm_parts[0]  # Operation name (e.g., ADDI, SW, LW)
-        operands = asm_parts[1:]  # Operands (e.g., x8, x0, 44)
+        operands = [op.replace('x', 'R').replace(',', '') for op in asm_parts[1:]]  # Replace 'x' with 'R' for consistency and remove commas
 
         # Construct parsed instruction dictionary
         parsed_instr = {
+            "string": asm_str,
             "operation": operation,
             "operands": operands,
             "address": address
         }
+        print(parsed_instr)
         return parsed_instr
 
     def advance_pipeline(self):
@@ -204,7 +205,7 @@ class PipelineSimulator:
             # Integer Registers
             print("Integer registers:")
             for i in range(0, 32, 4):
-                print(f"R{i}\t{self.registers[f'x{i}']}\tR{i+1}\t{self.registers[f'x{i+1}']}\tR{i+2}\t{self.registers[f'x{i+2}']}\tR{i+3}\t{self.registers[f'x{i+3}']}")
+                print(f"R{i}\t{self.registers[f'R{i}']}\tR{i+1}\t{self.registers[f'R{i+1}']}\tR{i+2}\t{self.registers[f'R{i+2}']}\tR{i+3}\t{self.registers[f'R{i+3}']}")
             print()
 
             # Data Memory
