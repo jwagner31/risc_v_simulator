@@ -138,22 +138,67 @@ class PipelineSimulator:
                 value = self.pipeline_registers["EX/DF"]["B"]
                 self.memory[address] = value
 
+        '''
+
         # EX Stage - Execute ALU operations
         if self.pipeline["EX"]["operation"] != "NOP":
             instruction = self.pipeline["EX"]
-            if instruction["operation"] in ["ADD", "SUB", "ADDI"]:
-                src1 = instruction["operands"][1]
-                src2 = instruction["operands"][2] if len(instruction["operands"]) > 2 else None
-                if instruction["operation"] == "ADD":
-                    result = self.registers[src1] + self.registers[src2]
-                elif instruction["operation"] == "SUB":
-                    result = self.registers[src1] - self.registers[src2]
-                elif instruction["operation"] == "ADDI":
-                    result = self.registers[src1] + int(src2)
-                self.pipeline_registers["EX/DF"]["ALUout"] = result
-        
+            operation = instruction["operation"]
+            operands = instruction["operands"]
 
-        '''
+            if operation in ["ADD", "SUB", "SLL", "SRL", "AND", "OR", "XOR", "SLT", "SLTI", "ADDI"]:
+                # General ALU operations involving registers and immediate values
+                src1_value = self.pipeline_registers["RF/EX"]["A"]
+                src2_value = self.pipeline_registers["RF/EX"]["B"]
+
+                if operation == "ADD":
+                    result = src1_value + src2_value
+                elif operation == "SUB":
+                    result = src1_value - src2_value
+                elif operation == "SLL":
+                    result = src1_value << src2_value
+                elif operation == "SRL":
+                    result = src1_value >> src2_value
+                elif operation == "AND":
+                    result = src1_value & src2_value
+                elif operation == "OR":
+                    result = src1_value | src2_value
+                elif operation == "XOR":
+                    result = src1_value ^ src2_value
+                elif operation == "SLT":
+                    result = 1 if src1_value < src2_value else 0
+                elif operation == "SLTI":
+                    # Immediate value (src2_value) is always considered signed
+                    result = 1 if src1_value < src2_value else 0
+                elif operation == "ADDI":
+                    # Immediate value (src2_value) is always considered signed
+                    result = src1_value + src2_value
+
+                # Store the result in EX/DF pipeline register
+                self.pipeline_registers["EX/DF"]["ALUout"] = result
+
+            elif operation in ["LW", "SW"]:
+                # Calculate the effective address: base register value + immediate offset
+                base_value = self.pipeline_registers["RF/EX"]["A"]
+                offset = int(re.search(r'(\d+)', operands[1]).group()) if operation == "LW" else self.pipeline_registers["RF/EX"]["B"]
+                effective_address = base_value + offset
+                self.pipeline_registers["EX/DF"]["ALUout"] = effective_address
+
+            elif operation in ["BEQ", "BNE", "BGE", "BLT"]:
+                # Branch operations (comparison of two registers)
+                src1_value = self.pipeline_registers["RF/EX"]["A"]
+                src2_value = self.pipeline_registers["RF/EX"]["B"]
+
+                if ((operation == "BEQ" and src1_value == src2_value) or
+                    (operation == "BNE" and src1_value != src2_value) or
+                    (operation == "BGE" and src1_value >= src2_value) or
+                    (operation == "BLT" and src1_value < src2_value)):
+                    # If branch taken, adjust the PC accordingly
+                    target_offset = int(operands[-1])  # Assuming the last operand contains the branch target offset
+                    self.pc += target_offset
+                    self.pipeline_registers["EX/DF"]["ALUout"] = self.pc  # Use ALUout for storing branch target for next stages
+
+
         if self.pipeline["RF"]["operation"] != "NOP":
             instruction = self.pipeline["RF"]
             operation = instruction["operation"]
