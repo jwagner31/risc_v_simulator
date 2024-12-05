@@ -1,6 +1,6 @@
 import argparse
-from disassembler import Disassembler
 from pipeline_simulator import PipelineSimulator
+from disassembler import Disassembler
 
 def main():
     # Command line args
@@ -13,6 +13,8 @@ def main():
     args = parser.parse_args()
 
     if args.oper == 'dis':
+        # Since disassembly functionality isn't our focus right now, I am just keeping a placeholder.
+        # Assuming the disassembler writes directly to the output_file.
         disassembler = Disassembler(args.input_file_name, args.output_file_name)
         disassembler.disassemble()
 
@@ -27,12 +29,15 @@ def main():
         else:
             trace_start, trace_end = None, None  # Default - trace everything
 
-        # Initialize Disassembler to get the parsed instructions
-        disassembler = Disassembler(args.input_file_name, args.output_file_name)
-        disassembler.disassemble()
+        # Read the instructions from the output file
+        with open(args.output_file_name, 'r') as file:
+            instructions = file.readlines()
+
+        # Process instructions to format them correctly for PipelineSimulator
+        instructions = [instr.strip() for instr in instructions if instr.strip() != '']
 
         # Create and run the Pipeline Simulator
-        pipeline_sim = PipelineSimulator(disassembler.result, trace_start, trace_end)
+        pipeline_sim = PipelineSimulator(instructions, trace_start, trace_end)
         pipeline_sim.simulate()
 
     else:
