@@ -123,6 +123,14 @@ class PipelineSimulator:
                 "address": address
             }
             return parsed_instr
+        if operation == "RET":
+            parsed_instr = {
+                "string": "BREAK",
+                "operation": "NOP",
+                "operands": [None, None, None],
+                "address": address
+            }
+            return parsed_instr
 
         operands = [op.replace('x', 'R').replace(',', '') for op in parts[8:]]  # Replace 'x' with 'R' for consistency and remove commas
 
@@ -208,7 +216,6 @@ class PipelineSimulator:
             operation = instruction["operation"]
 
             if operation == "LW":
-                # For LW, read from memory and store in ALUout_LMD
                 address = self.pipeline_registers["EX/DF"]["ALUout"]
                 self.pipeline_registers["DF/DS"]["ALUout_LMD"] = address
 
@@ -223,20 +230,17 @@ class PipelineSimulator:
                         self.forwarding_print["DF/DS -> EX/DF"] = f"({src_string}) to ({instruction['string']})"
                         
                 else:
-                    # SW passes along value
                     address = self.pipeline_registers["EX/DF"]["ALUout"]
                     self.pipeline_registers["DF/DS"]["ALUout_LMD"] = address
                     value = self.registers[instruction["operands"][0]]
                     self.pipeline_registers["DF/DS"]["ALUout_LMD_B"] = value
-                    #self.memory[address] = value
 
             elif operation in ["ADD", "SUB", "ADDI", "SLL", "SRL", "AND", "OR", "XOR", "SLT", "SLTI"]:
-                # For arithmetic and logical instructions, pass ALU result to ALUout_LMD
                 self.pipeline_registers["DF/DS"]["ALUout_LMD"] = self.pipeline_registers["EX/DF"]["ALUout"]
 
             elif operation in ["BEQ", "BNE", "BLT", "BGE", "JAL", "JALR"]:
                 # For branch and jump instructions, no value to propagate; ensure ALUout_LMD is cleared
-                self.pipeline_registers["DF/DS"]["ALUout_LMD"] = 0
+                self.pipeline_registers["DF/DS"]["ALUout_LMD"] = self.pipeline_registers["EX/DF"]["ALUout"]
 
         # EX Stage - Execute ALU operations
         if self.pipeline["EX"]["operation"] != "NOP":
@@ -348,8 +352,17 @@ class PipelineSimulator:
                     self.pipeline_registers["EX/DF"]["B"] = self.pipeline_registers["RF/EX"]["B"]
 
             elif operation in ["BEQ", "BNE", "BLT", "BGE"]:
-                src1_value = self.pipeline_registers["RF/EX"]["A"]
-                src2_value = self.pipeline_registers["RF/EX"]["B"]
+
+                if (instruction["string"] in self.forwarding_detected) and (operands[0] == self.pipeline["DF"]["operands"][0]):
+                    self.forwarding_counts["EX/DF -> RF/EX"] += 1
+                    src1_value = self.pipeline_registers["DF/DS"]["ALUout_LMD"]
+                    src2_value = self.pipeline_registers["RF/EX"]["B"]
+                    src_string = self.forwarding_detected[instruction["string"]][0]
+                    self.forwarding_print["EX/DF -> RF/EX"] = f"({src_string}) to ({instruction['string']})"
+                    del self.forwarding_detected[instruction["string"]]
+                else:
+                    src1_value = self.pipeline_registers["RF/EX"]["A"]
+                    src2_value = self.pipeline_registers["RF/EX"]["B"]
 
                 branch_taken = False
                 if operation == "BEQ" and src1_value == src2_value:
@@ -361,25 +374,25 @@ class PipelineSimulator:
                 elif operation == "BGE" and src1_value >= src2_value:
                     branch_taken = True
 
+                self.pipeline_registers["EX/DF"]["B"] = self.pipeline_registers["RF/EX"]["B"]
+                self.pipeline_registers["EX/DF"]["ALUout"] = 556
                 if branch_taken:
-                    offset = int(operands[2])  # Branch offset
+                    offset = int(operands[2])  
                     self.pc = self.pc + offset
-                    self.branch_stalls += 1
-                    # Invalidate pipeline stages to insert bubbles
-                    self.pipeline["IF"] = {"operation": "NOP", "operands": [], "address": None, "string": "NOP"}
-                    self.pipeline["IS"] = {"operation": "NOP", "operands": [], "address": None, "string": "NOP"}
-                    self.pipeline["ID"] = {"operation": "NOP", "operands": [], "address": None, "string": "NOP"}
 
-            elif operation in ["JAL", "JALR"]:
+            elif operation in ["J", "JAL", "JALR"]:
                 # Jump and link operations
                 if operation == "JAL":
                     offset = int(operands[1])
-                    self.registers[operands[0]] = self.pc + 4  # Store return address
+                    self.registers[operands[0]] = self.pc + 4  
                     self.pc = self.pc + offset
                 elif operation == "JALR":
                     base_value = self.pipeline_registers["RF/EX"]["A"]
-                    self.registers[operands[0]] = self.pc + 4  # Store return address
+                    self.registers[operands[0]] = self.pc + 4  
                     self.pc = base_value + int(operands[1])
+                elif operation == "J":
+                    self.pipeline_registers["EX/DF"]["ALUout"] = int(operands[0])
+                    self.pipeline_registers["EX/DF"]["B"] = 0
         else:
             # No operation in EX stage; clear out registers 
             self.pipeline_registers["EX/DF"]["ALUout"] = 0
@@ -392,8 +405,8 @@ class PipelineSimulator:
             operands = instruction["operands"]
 
             if operation in ["ADD", "SUB", "ADDI", "SLL", "SRL", "AND", "OR", "XOR", "SLT", "SLTI"]:
-                # The first operand is always the destination register, the second is the source register.
-                src1 = operands[1]  # Get the source register for these types of instructions
+                # te first operand is always the destination register, the second is the source register.
+                src1 = operands[1]  
                 self.pipeline_registers["RF/EX"]["A"] = self.registers[src1]
 
                 # Some instructions have a second source operand (register or immediate)
@@ -436,6 +449,9 @@ class PipelineSimulator:
             elif operation == "BEQ":
                 self.pipeline_registers["RF/EX"]["A"] = self.registers[operands[0]]
                 self.pipeline_registers["RF/EX"]["B"] = self.registers[operands[1]]
+            elif operation == "J":
+                self.pipeline_registers["RF/EX"]["A"] = 0
+                self.pipeline_registers["RF/EX"]["B"] = 0
 
 
         # ID Stage - Decode Instruction
