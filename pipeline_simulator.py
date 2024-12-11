@@ -1,11 +1,10 @@
-# pipeline_simulator.py
 import re
 
 class PipelineSimulator:
     def __init__(self, instructions, trace_start=None, trace_end=None):
         # Input list of decoded instructions from disassembler
-        self.instructions = self.convert_instructions(instructions)  # List of disassembled instructions to be simulated
-        # Initialize pipeline as a dictionary with stages as keys
+        self.instructions = self.convert_instructions(instructions) 
+        # initialize pipeline as a dictionary with stages as keys
         nop_instruction = {"operation": "NOP", "operands": [], "address": None, "string": "NOP"}
         self.pipeline = {
             "IF": nop_instruction,
@@ -21,13 +20,11 @@ class PipelineSimulator:
         self.trace_start = trace_start    
         self.trace_end = trace_end        
 
-        # Register and Memory Setup
         self.registers = {f"R{i}": 0 for i in range(32)}  # 32 registers as a dictionary
         self.memory = {i: 0 for i in range(600, 640, 4)}    # Dictionary to represent memory space from address 600 to 636
 
-        # Metrics for logging simulation performance
-        self.total_stalls = 0             
-        self.total_forwardings = 0        
+        self.total_stalls = 0
+        self.total_forwardings = 0
         self.load_stalls = 0
         self.branch_stalls = 0
         self.other_stalls = 0
@@ -63,18 +60,17 @@ class PipelineSimulator:
         
         self.is_pipeline_complete = False
 
-        # Program Counter
         self.pc = 496
         self.stall_counter = 0
         self.stall_flag = False
 
     def simulate(self):
-        # Entry point for running the pipeline simulation
+        # Main loop of stuff
         for i in range(self.trace_end):
             if self.is_pipeline_complete:
                 break
-            self.advance_pipeline()       
-            self.clock_cycle += 1        
+            self.advance_pipeline()
+            self.clock_cycle += 1
         self.print_final_summary()
 
     def convert_instructions(self, instruction_lines):
@@ -83,8 +79,6 @@ class PipelineSimulator:
         for line in instruction_lines:
             # Replace all tab characters with spaces
             formatted_line = line.replace('\t', ' ')
-            
-            # Append the formatted line to the list of formatted instructions
             formatted_instructions.append(formatted_line)
         
         return formatted_instructions
