@@ -16,24 +16,22 @@ class PipelineSimulator:
             "DF": nop_instruction,
             "DS": nop_instruction,
             "WB": nop_instruction
-        }        
-        self.clock_cycle = 0              # Track the number of clock cycles
-        self.trace_start = trace_start    # Start of tracing cycle
-        self.trace_end = trace_end        # End of tracing cycle
+        }
+        self.clock_cycle = 0              
+        self.trace_start = trace_start    
+        self.trace_end = trace_end        
 
         # Register and Memory Setup
-        self.registers = {f"R{i}": 0 for i in range(32)}  # 32 general-purpose registers as a dictionary
+        self.registers = {f"R{i}": 0 for i in range(32)}  # 32 registers as a dictionary
         self.memory = {i: 0 for i in range(600, 640, 4)}    # Dictionary to represent memory space from address 600 to 636
 
         # Metrics for logging simulation performance
-        self.total_stalls = 0             # Total number of stalls
-        self.total_forwardings = 0        # Total number of forwardings
-        self.load_stalls = 0              # Load stalls
-        self.branch_stalls = 0            # Branch stalls
-        self.other_stalls = 0             # Other stalls
+        self.total_stalls = 0             
+        self.total_forwardings = 0        
+        self.load_stalls = 0
+        self.branch_stalls = 0
+        self.other_stalls = 0
         
-        # Forwarding counts and detection
-
         self.forwarding_counts = {
             "EX/DF -> RF/EX": 0,
             "DF/DS -> EX/DF": 0,
@@ -54,7 +52,6 @@ class PipelineSimulator:
         # instruction_needing_forwarding -> list( possible forwarding_sources)
         self.forwarding_detected = {}
         
-        # Pipeline registers setup
         self.pipeline_registers = {
             "IF/IS": {"NPC": 0},
             "IS/ID": {"IR": nop_instruction},
@@ -64,7 +61,6 @@ class PipelineSimulator:
             "DS/WB": {"ALUout_LMD": 0}
         }
         
-        # Flag to indicate the pipeline's completion state
         self.is_pipeline_complete = False
 
         # Program Counter
@@ -75,10 +71,11 @@ class PipelineSimulator:
     def simulate(self):
         # Entry point for running the pipeline simulation
         for i in range(self.trace_end):
-            self.advance_pipeline()       # Move instructions through the pipeline stages
-            self.clock_cycle += 1         # Increment clock cycle count
-        # Print final state and statistics
-        #self.print_final_summary()
+            if self.is_pipeline_complete:
+                break
+            self.advance_pipeline()       
+            self.clock_cycle += 1        
+        self.print_final_summary()
 
     def convert_instructions(self, instruction_lines):
         formatted_instructions = []
@@ -182,6 +179,8 @@ class PipelineSimulator:
                     self.pipeline_registers["RF/EX"]["B"] = result
                     self.forwarding_counts["DS/WB -> RF/EX"] += 1
                     self.forwarding_print["DS/WB -> RF/EX"] = f"({instruction['string']}) to ({self.pipeline['EX']['string']})"
+            elif instruction["operation"] == "J":
+                self.pipeline_registers["DS/WB"]["ALUout_LMD"] = 0
 
         # DS Stage
         if self.pipeline["DS"]["operation"] != "NOP":
@@ -208,7 +207,10 @@ class PipelineSimulator:
                 self.pipeline_registers["DS/WB"]["ALUout_LMD"] = self.memory[address]
             elif operation in ["BEQ", "BNE", "BLT", "BGE", "JAL", "JALR"]:
                 # For branch and jump instructions, no value to propagate; ensure ALUout_LMD is cleared
-                self.pipeline_registers["DS/WB"]["ALUout_LMD"] = 0
+                self.pipeline_registers["DS/WB"]["ALUout_LMD"] = self.pipeline_registers["DF/DS"]["ALUout_LMD"]
+
+            if operation == "J":
+                self.pipeline_registers["DS/WB"]["ALUout_LMD"] = instruction["operands"][0]
 
         # DF Stage
         if self.pipeline["DF"]["operation"] != "NOP":
@@ -241,6 +243,22 @@ class PipelineSimulator:
             elif operation in ["BEQ", "BNE", "BLT", "BGE", "JAL", "JALR"]:
                 # For branch and jump instructions, no value to propagate; ensure ALUout_LMD is cleared
                 self.pipeline_registers["DF/DS"]["ALUout_LMD"] = self.pipeline_registers["EX/DF"]["ALUout"]
+
+            elif operation == "J":
+                self.pc = self.pipeline_registers["EX/DF"]["ALUout"]
+                self.pipeline_registers["DF/DS"]["ALUout_LMD"] = 0
+                self.pipeline_registers["DF/DS"]["ALUout_LMD_B"] = 0
+                self.pipeline_registers["EX/DF"]["ALUout"] = 0
+                self.pipeline_registers["EX/DF"]["B"] = 0
+                self.pipeline_registers["RF/EX"]["A"] = 0
+                self.pipeline_registers["RF/EX"]["B"] = 0
+                self.pipeline["IS"] = {"operation": "NOP", "operands": [], "address": None, "string": "** STALL **"}
+                self.pipeline["ID"] = {"operation": "NOP", "operands": [None, None, None], "address": None, "string": "** STALL **"}
+                self.pipeline["RF"] = {"operation": "NOP", "operands": [None, None, None], "address": None, "string": "** STALL **"}
+                self.pipeline["EX"] = {"operation": "NOP", "operands": [None, None, None], "address": None, "string": "** STALL **"}
+                self.pipeline_registers["IF/IS"]["NPC"] = self.pc + 4
+                self.branch_stalls += 4
+
 
         # EX Stage - Execute ALU operations
         if self.pipeline["EX"]["operation"] != "NOP":
@@ -379,6 +397,7 @@ class PipelineSimulator:
                 if branch_taken:
                     offset = int(operands[2])  
                     self.pc = self.pc + offset
+                    self.is_pipeline_complete = True
 
             elif operation in ["J", "JAL", "JALR"]:
                 # Jump and link operations
@@ -535,9 +554,11 @@ class PipelineSimulator:
             # Pipeline Status
             print("Pipeline Status:")
             for stage, instr in self.pipeline.items():
+                operation = None
                 if stage == "IF":
                     operation = "<unknown>"
-                operation = instr["string"]
+                else:
+                    operation = instr["string"]
                 print(f"* {stage} : {operation}")
             print()
                         # Stall Instruction
@@ -601,21 +622,19 @@ class PipelineSimulator:
             print()
 
     def print_final_summary(self):
-        # Print final summary after pipeline simulation completes
         print("\nFinal Simulation Summary:")
         print(f"Total Cycles: {self.clock_cycle}")
         print(f"Total Stalls: {self.total_stalls}")
         print(f"  Load Stalls: {self.load_stalls}")
         print(f"  Branch Stalls: {self.branch_stalls}")
         print(f"  Other Stalls: {self.other_stalls}")
+        self.total_forwardings = sum(self.forwarding_counts.values())
         print(f"Total Forwardings: {self.total_forwardings}")
 
-        # Print register contents
         print("\nRegisters:")
         for reg, value in self.registers.items():
             print(f"  {reg}: {value}")
 
-        # Print memory contents
         print("\nMemory:")
         for addr in range(600, 640, 4):
             print(f"  {addr}: {self.memory[addr]}")
