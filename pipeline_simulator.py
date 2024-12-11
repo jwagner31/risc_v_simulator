@@ -95,13 +95,35 @@ class PipelineSimulator:
     def parse_instruction(self, instruction):
         # Parse the given instruction string and return a dictionary of components
         # Instructions are formatted as: assembly representation followed by address
+
         parts = instruction.split()
+        if len(parts) < 4:
+            return {"operation": "NOP", "operands": [None, None, None], "address": None, "string": "NOP"}
         asm_str = ""
         for i in range(7, len(parts)):
             asm_str += parts[i] + " "
+
         address = int(parts[6])  # Address as integer
         # Split asm_str into operation and operands
         operation = parts[7]  # Operation name (e.g., ADDI, SW, LW)
+        #Special Case: J 
+        if operation == "J":
+            parsed_instr = {
+                "string": parts[7] + " " + parts[8],
+                "operation": operation,
+                "operands": [parts[8][1:len(parts[8])]],
+                "address": address
+            }
+            return parsed_instr
+        if asm_str == "ADDI x0, x0, 0 ":
+            parsed_instr = {
+                "string": "NOP",
+                "operation": "NOP",
+                "operands": [None, None, None],
+                "address": address
+            }
+            return parsed_instr
+
         operands = [op.replace('x', 'R').replace(',', '') for op in parts[8:]]  # Replace 'x' with 'R' for consistency and remove commas
 
         # Construct parsed instruction dictionary
@@ -148,6 +170,10 @@ class PipelineSimulator:
                 dest_reg = instruction["operands"][0]
                 result = self.pipeline_registers["DS/WB"]["ALUout_LMD"]
                 self.registers[dest_reg] = result
+                if self.pipeline["DS"]["string"] == "** STALL **" and self.pipeline["EX"]["operands"][2] == dest_reg:
+                    self.pipeline_registers["RF/EX"]["B"] = result
+                    self.forwarding_counts["DS/WB -> RF/EX"] += 1
+                    self.forwarding_print["DS/WB -> RF/EX"] = f"({instruction['string']}) to ({self.pipeline['EX']['string']})"
 
         # DS Stage
         if self.pipeline["DS"]["operation"] != "NOP":
@@ -322,7 +348,6 @@ class PipelineSimulator:
                     self.pipeline_registers["EX/DF"]["B"] = self.pipeline_registers["RF/EX"]["B"]
 
             elif operation in ["BEQ", "BNE", "BLT", "BGE"]:
-                # Branch operations
                 src1_value = self.pipeline_registers["RF/EX"]["A"]
                 src2_value = self.pipeline_registers["RF/EX"]["B"]
 
@@ -407,6 +432,10 @@ class PipelineSimulator:
                     if not just_stalled and operands[0] == self.pipeline["IS"]["operands"][1]:
                         self.stall_counter += 1
                         just_stalled = True
+
+            elif operation == "BEQ":
+                self.pipeline_registers["RF/EX"]["A"] = self.registers[operands[0]]
+                self.pipeline_registers["RF/EX"]["B"] = self.registers[operands[1]]
 
 
         # ID Stage - Decode Instruction
