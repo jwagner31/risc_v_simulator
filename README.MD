@@ -5,8 +5,8 @@
 ## Usage:
 
 - To run the disassembler, use the following command:
-  python disassembler.py <inputfilename> <outputfilename> dis
+  python main.py <inputfilename> <outputfilename> dis
 
+- To run the pipeline simulator, use the following command:
+  python main.py <inputfilename> <outputfilename1> <outputfilename2> sim -T <start>:<end>
 
-
-Sample command:

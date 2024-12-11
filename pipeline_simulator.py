@@ -1,9 +1,10 @@
 import re
 
 class PipelineSimulator:
-    def __init__(self, instructions, trace_start=None, trace_end=None):
+    def __init__(self, instructions, trace_start=None, trace_end=None, output_file_name_2=None):
         # Input list of decoded instructions from disassembler
-        self.instructions = self.convert_instructions(instructions) 
+        self.instructions = self.convert_instructions(instructions)
+        self.output_file_name_2 = output_file_name_2
         # initialize pipeline as a dictionary with stages as keys
         nop_instruction = {"operation": "NOP", "operands": [], "address": None, "string": "NOP"}
         self.pipeline = {
@@ -85,8 +86,6 @@ class PipelineSimulator:
     
     def parse_instruction(self, instruction):
         # Parse the given instruction string and return a dictionary of components
-        # Instructions are formatted as: assembly representation followed by address
-
         parts = instruction.split()
         if len(parts) < 4:
             return {"operation": "NOP", "operands": [None, None, None], "address": None, "string": "NOP"}
@@ -94,9 +93,9 @@ class PipelineSimulator:
         for i in range(7, len(parts)):
             asm_str += parts[i] + " "
 
-        address = int(parts[6])  # Address as integer
+        address = int(parts[6])
         # Split asm_str into operation and operands
-        operation = parts[7]  # Operation name (e.g., ADDI, SW, LW)
+        operation = parts[7]  # Operation nam
         #Special Case: J 
         if operation == "J":
             parsed_instr = {
@@ -123,9 +122,8 @@ class PipelineSimulator:
             }
             return parsed_instr
 
-        operands = [op.replace('x', 'R').replace(',', '') for op in parts[8:]]  # Replace 'x' with 'R' for consistency and remove commas
+        operands = [op.replace('x', 'R').replace(',', '') for op in parts[8:]]  # swap 'x' with 'R' and remove commas
 
-        # Construct parsed instruction dictionary
         parsed_instr = {
             "string": asm_str,
             "operation": operation,
@@ -181,12 +179,10 @@ class PipelineSimulator:
             instruction = self.pipeline["DS"]
             operation = instruction["operation"]
 
-            # Flush the instruction entry out the forwarding dictionary, since we are past any necessary forwarding
             if instruction["string"] in self.forwarding_detected:
                 del self.forwarding_detected[instruction["string"]]
 
             if operation in ["ADD", "SUB", "ADDI", "SLL", "SRL", "AND", "OR", "XOR", "SLT", "SLTI"]:
-                # For arithmetic and logical instructions, pass ALU result to ALUout_LMD
                 self.pipeline_registers["DS/WB"]["ALUout_LMD"] = self.pipeline_registers["DF/DS"]["ALUout_LMD"]
             elif operation in ["SW"]:
                 # need to store the value currently in the 
@@ -196,11 +192,9 @@ class PipelineSimulator:
                 self.pipeline_registers["DS/WB"]["ALUout_LMD"] = address
 
             elif operation in ["LW"]:
-                # For LW and SW, no value to propagate; ensure ALUout_LMD is cleared
                 address = self.pipeline_registers["DF/DS"]["ALUout_LMD"]
                 self.pipeline_registers["DS/WB"]["ALUout_LMD"] = self.memory[address]
             elif operation in ["BEQ", "BNE", "BLT", "BGE", "JAL", "JALR"]:
-                # For branch and jump instructions, no value to propagate; ensure ALUout_LMD is cleared
                 self.pipeline_registers["DS/WB"]["ALUout_LMD"] = self.pipeline_registers["DF/DS"]["ALUout_LMD"]
 
             if operation == "J":
@@ -235,7 +229,6 @@ class PipelineSimulator:
                 self.pipeline_registers["DF/DS"]["ALUout_LMD"] = self.pipeline_registers["EX/DF"]["ALUout"]
 
             elif operation in ["BEQ", "BNE", "BLT", "BGE", "JAL", "JALR"]:
-                # For branch and jump instructions, no value to propagate; ensure ALUout_LMD is cleared
                 self.pipeline_registers["DF/DS"]["ALUout_LMD"] = self.pipeline_registers["EX/DF"]["ALUout"]
 
             elif operation == "J":
@@ -340,11 +333,8 @@ class PipelineSimulator:
                     base_value = self.pipeline_registers["RF/EX"]["A"]
                     address = base_value + 600
                     self.pipeline_registers["EX/DF"]["ALUout"] = address
-                    #self.pipeline_registers["EX/DF"]["B"] = self.pipeline_registers["RF/EX"]["B"]
                     self.pipeline_registers["EX/DF"]["B"] = self.registers[operands[0]]
             elif operation == "LW":
-                #print(self.forwarding_detected)
-                # For LW, the address is calculated similarly
                 base_operand = operands[1]
                 match = re.match(r'.*\((R\d+)\)', base_operand)
                 base_reg = match.group(1)
@@ -394,7 +384,6 @@ class PipelineSimulator:
                     self.is_pipeline_complete = True
 
             elif operation in ["J", "JAL", "JALR"]:
-                # Jump and link operations
                 if operation == "JAL":
                     offset = int(operands[1])
                     self.registers[operands[0]] = self.pc + 4  
@@ -407,7 +396,6 @@ class PipelineSimulator:
                     self.pipeline_registers["EX/DF"]["ALUout"] = int(operands[0])
                     self.pipeline_registers["EX/DF"]["B"] = 0
         else:
-            # No operation in EX stage; clear out registers 
             self.pipeline_registers["EX/DF"]["ALUout"] = 0
             self.pipeline_registers["EX/DF"]["B"] = 0
 
@@ -422,10 +410,9 @@ class PipelineSimulator:
                 src1 = operands[1]  
                 self.pipeline_registers["RF/EX"]["A"] = self.registers[src1]
 
-                # Some instructions have a second source operand (register or immediate)
                 if operation in ["ADD", "SUB", "SLL", "SRL", "AND", "OR", "XOR", "SLT"]:
                     if len(operands) > 2:
-                        src2 = operands[2]  # Get the second source register or immediate value
+                        src2 = operands[2] 
                         if src2.startswith('R'):
                             self.pipeline_registers["RF/EX"]["B"] = self.registers[src2]
                         else:
@@ -436,11 +423,10 @@ class PipelineSimulator:
                 match = re.match(r'.*\((R\d+)\)', base_operand)
                 base_reg = match.group(1) 
 
-                # Set the pipeline registers
                 self.pipeline_registers["RF/EX"]["A"] = self.registers[base_reg]
                 if operation == "SW":
-                    # For SW, we also need the value to be stored, which is the first operand (a register)
-                    src_value = operands[0]  # Value to be stored (e.g., "R6")
+                    # For SW also need the value to be stored, operand[1]
+                    src_value = operands[0]
                     self.pipeline_registers["RF/EX"]["B"] = self.registers[src_value]
                 if operation == "LW":
                     just_stalled = False
@@ -479,7 +465,7 @@ class PipelineSimulator:
             if operation in ["SW"]:
                 src1 = operands[0]
                 match = re.match(r'.*\((R\d+)\)', operands[1])
-                src2 = match.group(1)  # Extract base register (e.g., "R0") 
+                src2 = match.group(1)
             elif operation in ["LW"]:
                 match = re.match(r'.*\((R\d+)\)', operands[1])
                 src1 = match.group(1)
@@ -488,7 +474,7 @@ class PipelineSimulator:
                 src1 = operands[0]
                 src2 = operands[1]
             else:
-                # Identify source registers for the current instruction
+                # identify sources
                 src1 = operands[1] if len(operands) > 1 and operands[1].startswith('R') else None
                 src2 = operands[2] if len(operands) > 2 and operands[2].startswith('R') else None
 
@@ -499,7 +485,7 @@ class PipelineSimulator:
                     if producing_instruction["operation"] == "SW":
                         dest_reg = None
 
-                    # Check if there is a RAW hazard
+                    # RAW hazard check
                     if dest_reg and (src1 == dest_reg or src2 == dest_reg):
                         if instruction_in_id["string"] not in self.forwarding_detected:
                             self.forwarding_detected[instruction_in_id["string"]] = []
@@ -507,18 +493,18 @@ class PipelineSimulator:
                             self.forwarding_detected[instruction_in_id["string"]].append(producing_instruction["string"])
 
 
-        # IS Stage - Continue instruction fetch from IF stage
+        # IS Stage
         # Update IR register in IS/ID pipeline register
         if self.pipeline["IS"] != {"operation": "NOP", "operands": [], "address": None} and not self.stall_flag:
             self.pipeline_registers["IS/ID"]["IR"] = self.pipeline["IS"]
 
-        # IF Stage - Fetch next instruction
+        # IF Stage
         if self.pc < 496 + len(self.instructions) * 4 and not self.stall_flag:
             next_instruction_index = (self.pc - 496) // 4
             self.pipeline["IF"] = self.parse_instruction(self.instructions[next_instruction_index])
             self.pipeline_registers["IF/IS"]["NPC"] = self.pc + 4
         elif not self.stall_flag:
-            self.pipeline["IF"] = {"operation": "NOP", "operands": [], "address": None}  # No more instructions to fetch
+            self.pipeline["IF"] = {"operation": "NOP", "operands": [], "address": None}
 
         self.print_pipeline_trace()
 
@@ -533,33 +519,25 @@ class PipelineSimulator:
             self.pc += 4
 
 
-        # Check if the pipeline is complete (all stages are NOP)
         if all(stage["operation"] == "NOP" for stage in self.pipeline.values()):
             self.is_pipeline_complete = True
 
 
     def print_pipeline_trace(self):
-        # Print the current state of the pipeline for tracing purposes (if within trace range)
         if (self.trace_start is None and self.trace_end is None) or \
-           (self.trace_start <= self.clock_cycle <= self.trace_end):
-            print(f"***** Cycle #{self.clock_cycle}***********************************************")
-            print(f"Current PC = {self.pc}:")
-
-            # Pipeline Status
-            print("Pipeline Status:")
+        (self.trace_start <= self.clock_cycle <= self.trace_end):
+            to_print = []
+            to_print.append(f"***** Cycle #{self.clock_cycle}***********************************************")
+            to_print.append(f"Current PC = {self.pc}:")
+            to_print.append("Pipeline Status:")
             for stage, instr in self.pipeline.items():
-                operation = None
-                if stage == "IF":
-                    operation = "<unknown>"
-                else:
-                    operation = instr["string"]
-                print(f"* {stage} : {operation}")
-            print()
-                        # Stall Instruction
+                operation = "<unknown>" if stage == "IF" else instr["string"]
+                to_print.append(f"* {stage} : {operation}")
+            to_print.append(" ")
             stall_instr = self.pipeline["ID"] if self.pipeline["ID"] == "** STALL **" else "(none)"
-            print(f"Stall Instruction: {stall_instr}\n")
+            to_print.append(f"Stall Instruction: {stall_instr}\n")
 
-            print("Forwarding:")
+            to_print.append("Forwarding:")
             if self.pipeline["ID"]["operation"] != "NOP" and not self.stall_flag:
                 current_instruction = self.pipeline["ID"]["string"]
                 detected_forwarding = [
@@ -571,64 +549,75 @@ class PipelineSimulator:
                     if "LW" in src_string:
                         lw_not_detected = False
                 if detected_forwarding and lw_not_detected:
-                    print(" Detected: ")
+                    to_print.append(" Detected: ")
                     for forward in detected_forwarding:
-                        print(f"\t{forward}")
+                        to_print.append(f"\t{forward}")
                 else:
-                    print(" Detected: (none)")
+                    to_print.append(" Detected: (none)")
             else:
-                print(" Detected: (none)")
+                to_print.append(" Detected: (none)")
 
-            print(" Forwarded:")
+            to_print.append(" Forwarded:")
             for path, count in self.forwarding_print.items():
-                print(f" * {path} : {count}")
-            print()
+                to_print.append(f" * {path} : {count}")
+            to_print.append(" ")
 
-            # Pipeline Registers
-            print("Pipeline Registers:")
+            to_print.append("Pipeline Registers:")
             for reg, values in self.pipeline_registers.items():
                 for key, value in values.items():
-                    print(f"* {reg}.{key}\t: {value}")
-            print()
+                    to_print.append(f"* {reg}.{key}\t: {value}")
+            to_print.append(" ")
 
-            # Integer Registers
-            print("Integer registers:")
+            to_print.append("Integer registers:")
             for i in range(0, 32, 4):
-                print(f"R{i}\t{self.registers[f'R{i}']}\tR{i+1}\t{self.registers[f'R{i+1}']}\tR{i+2}\t{self.registers[f'R{i+2}']}\tR{i+3}\t{self.registers[f'R{i+3}']}")
-            print()
+                to_print.append(f"R{i}\t{self.registers[f'R{i}']}\tR{i+1}\t{self.registers[f'R{i+1}']}\tR{i+2}\t{self.registers[f'R{i+2}']}\tR{i+3}\t{self.registers[f'R{i+3}']}")
+            to_print.append(" ")
 
-            # Data Memory
-            print("Data memory:")
+            to_print.append("Data memory:")
             for addr in range(600, 640, 4):
-                print(f"{addr}: {self.memory.get(addr, 0)}")
-            print()
+                to_print.append(f"{addr}: {self.memory.get(addr, 0)}")
+            to_print.append(" ")
 
-            # Total Stalls
-            print("Total Stalls:")
-            print(f"*Loads\t: {self.load_stalls}")
-            print(f"*Branches: {self.branch_stalls}")
-            print(f"*Other\t: {self.other_stalls}\n")
+            to_print.append("Total Stalls:")
+            to_print.append(f"*Loads\t: {self.load_stalls}")
+            to_print.append(f"*Branches: {self.branch_stalls}")
+            to_print.append(f"*Other\t: {self.other_stalls}\n")
 
-            # Total Forwardings
-            print("Total Forwardings:")
+            to_print.append("Total Forwardings:")
             for path, count in self.forwarding_counts.items():
-                print(f" * {path} : {count}")
-            print()
+                to_print.append(f" * {path} : {count}")
+            to_print.append(" ")
+
+            if self.output_file_name_2:
+                with open(self.output_file_name_2, 'a') as file:
+                    file.write("\n".join(to_print) + "\n")
+
+            print("\n".join(to_print))
 
     def print_final_summary(self):
-        print("\nFinal Simulation Summary:")
-        print(f"Total Cycles: {self.clock_cycle}")
-        print(f"Total Stalls: {self.total_stalls}")
-        print(f"  Load Stalls: {self.load_stalls}")
-        print(f"  Branch Stalls: {self.branch_stalls}")
-        print(f"  Other Stalls: {self.other_stalls}")
+        summary_lines = []
+        summary_lines.append("\nFinal Simulation Summary:")
+        summary_lines.append(f"Total Cycles: {self.clock_cycle}")
+        self.total_stalls = self.load_stalls + self.branch_stalls
+        summary_lines.append(f"Total Stalls: {self.total_stalls}")
+        summary_lines.append(f"  Load Stalls: {self.load_stalls}")
+        summary_lines.append(f"  Branch Stalls: {self.branch_stalls}")
+        summary_lines.append(f"  Other Stalls: {self.other_stalls}")
         self.total_forwardings = sum(self.forwarding_counts.values())
-        print(f"Total Forwardings: {self.total_forwardings}")
+        summary_lines.append(f"Total Forwardings: {self.total_forwardings}")
+        summary_lines.append(" ")
 
-        print("\nRegisters:")
+        summary_lines.append("\nRegisters:")
         for reg, value in self.registers.items():
-            print(f"  {reg}: {value}")
+            summary_lines.append(f"  {reg}: {value}")
+        summary_lines.append(" ")
 
-        print("\nMemory:")
+        summary_lines.append("\nMemory:")
         for addr in range(600, 640, 4):
-            print(f"  {addr}: {self.memory[addr]}")
+            summary_lines.append(f"  {addr}: {self.memory[addr]}")
+        summary_lines.append(" ")
+
+        if self.output_file_name_2:
+            with open(self.output_file_name_2, 'a') as file:
+                file.write("\n".join(summary_lines) + "\n")
+        print("\n".join(summary_lines))
