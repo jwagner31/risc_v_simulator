@@ -564,8 +564,9 @@ class PipelineSimulator:
 
             to_print.append("Pipeline Registers:")
             for reg, values in self.pipeline_registers.items():
-                for key, value in values.items():
-                    to_print.append(f"* {reg}.{key}\t: {value}")
+                if not reg == "DF/DS":
+                    for key, value in values.items():
+                        to_print.append(f"* {reg}.{key}\t: {value}")
             to_print.append(" ")
 
             to_print.append("Integer registers:")
